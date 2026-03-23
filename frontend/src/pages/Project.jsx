@@ -327,6 +327,20 @@ export default function Project() {
             </button>
           ))}
 
+          {/* Load image button */}
+          <label title="Cargar imagen al frame seleccionado"
+            style={{width:'36px',height:'36px',borderRadius:'6px',cursor: selectedBase?'pointer':'not-allowed',
+              background: selectedBase?'rgba(129,140,248,0.15)':'transparent',
+              border:'none', display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:'16px', color: selectedBase?'#818cf8':'#1e293b',
+              boxShadow: selectedBase?'inset 0 0 0 1px rgba(129,140,248,0.4)':'none',
+            }}>
+            <input type="file" accept="image/*" style={{display:'none'}}
+              onChange={e=>{ assignImageToFrame(e.target.files?.[0]); e.target.value=''; }}
+              disabled={!selectedBase}/>
+            🖼
+          </label>
+
           {/* Separator */}
           <div style={{width:'28px',height:'1px',background:'#0f172a',margin:'4px 0'}}/>
 
