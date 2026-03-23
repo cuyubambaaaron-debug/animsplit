@@ -123,7 +123,7 @@ export default function Project() {
   function onMoveDown(e) {
     if (tool!=='move' || !selectedBase) return;
     const frame = baseFrames.find(f=>f.id===selectedBase);
-    if (!frame?.imageUrl) { fileRef.current?.click(); return; }
+    if (!frame?.imageUrl) return;
     imgDragRef.current = { startX:e.clientX, startY:e.clientY, origX:frame.x||0, origY:frame.y||0 };
     e.preventDefault();
   }
