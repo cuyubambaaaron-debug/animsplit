@@ -3,7 +3,32 @@ import { useParams, Link } from 'react-router-dom';
 import { projectsApi, slotsApi } from '../api';
 import SlotModal from '../components/SlotModal';
 
-const TOTAL_SLOTS = 8;
+const MAX_PER_TYPE = 5;
+
+const S = {
+  // Layout
+  app:        { height:'100vh', display:'flex', flexDirection:'column', background:'#f0f2f5', fontFamily:'Inter,system-ui,sans-serif', overflow:'hidden', color:'#1a2535' },
+  topbar:     { height:'48px', background:'#ffffff', borderBottom:'1px solid #dde1e7', display:'flex', alignItems:'center', paddingInline:'16px', gap:'12px', flexShrink:0, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' },
+  middle:     { flex:1, display:'flex', overflow:'hidden', minHeight:0 },
+  // Left panel
+  leftPanel:  { width:'220px', flexShrink:0, background:'#ffffff', borderRight:'1px solid #dde1e7', display:'flex', flexDirection:'column', overflow:'hidden' },
+  groupHead:  { padding:'10px 14px 6px', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  groupTitle: { fontSize:'11px', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#6b7c93' },
+  addBtn:     { background:'none', border:'1px solid #c8d0db', borderRadius:'5px', color:'#6b7c93', fontSize:'11px', padding:'2px 8px', cursor:'pointer', display:'flex', alignItems:'center', gap:'3px' },
+  layerRow:   { display:'flex', alignItems:'center', padding:'7px 14px', cursor:'pointer', borderBottom:'1px solid #f0f2f5', gap:'8px', transition:'background .1s' },
+  layerName:  { flex:1, fontSize:'12px', fontWeight:500, color:'#1a2535', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' },
+  // Canvas
+  canvasWrap: { flex:1, background:'#ffffff', display:'flex', alignItems:'center', justifyContent:'center', position:'relative', overflow:'hidden' },
+  canvasBg:   { position:'absolute', inset:0, backgroundImage:`linear-gradient(45deg,#f0f2f5 25%,transparent 25%),linear-gradient(-45deg,#f0f2f5 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f0f2f5 75%),linear-gradient(-45deg,transparent 75%,#f0f2f5 75%)`, backgroundSize:'20px 20px', backgroundPosition:'0 0,0 10px,10px -10px,-10px 0' },
+  // Timeline
+  timeline:   { height:'170px', background:'#ffffff', borderTop:'2px solid #dde1e7', display:'flex', flexDirection:'column', flexShrink:0 },
+  tlHead:     { height:'30px', background:'#f7f8fa', borderBottom:'1px solid #dde1e7', display:'flex', alignItems:'center', flexShrink:0 },
+  tlColHead:  { width:'220px', flexShrink:0, paddingInline:'14px', borderRight:'1px solid #dde1e7', fontSize:'10px', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#9aa5b4' },
+  tlFrameHead:{ flex:1, paddingInline:'10px', fontSize:'10px', color:'#9aa5b4', fontFamily:'monospace', letterSpacing:'0.05em', fontWeight:700 },
+  tlRow:      { height:'28px', display:'flex', alignItems:'center', borderBottom:'1px solid #f0f2f5', flexShrink:0 },
+  tlName:     { width:'220px', flexShrink:0, paddingInline:'14px', borderRight:'1px solid #dde1e7', display:'flex', alignItems:'center', gap:'6px', overflow:'hidden' },
+  tlTrack:    { flex:1, paddingInline:'10px', display:'flex', alignItems:'center', gap:'2px', overflow:'hidden' },
+};
 
 export default function Project() {
   const { id } = useParams();
@@ -14,214 +39,210 @@ export default function Project() {
   const [editingName, setEditingName]   = useState(false);
   const [nameInput, setNameInput]       = useState('');
 
-  useEffect(() => { loadProject(); }, [id]);
+  useEffect(() => { load(); }, [id]);
 
-  async function loadProject() {
+  async function load() {
     try {
       const { data } = await projectsApi.get(id);
       setProject(data);
       setNameInput(data.name);
-    } catch (e) { console.error(e); }
+    } catch(e){ console.error(e); }
     finally { setLoading(false); }
   }
 
   async function saveName() {
-    if (!nameInput.trim() || nameInput === project.name) { setEditingName(false); return; }
-    try {
-      await projectsApi.update(id, nameInput.trim());
-      setProject(p => ({ ...p, name: nameInput.trim() }));
-    } catch (e) { alert('Error'); }
+    if (!nameInput.trim() || nameInput===project.name){ setEditingName(false); return; }
+    await projectsApi.update(id, nameInput.trim());
+    setProject(p=>({...p,name:nameInput.trim()}));
     setEditingName(false);
   }
 
-  async function handleSlotSave(data) {
+  async function handleSave(formData) {
     const { type, slotNumber } = modal;
-    if (type === 'character') await slotsApi.updateCharacter(id, slotNumber, data);
-    else await slotsApi.updateBackground(id, slotNumber, data);
-    await loadProject();
+    if (type==='character') await slotsApi.updateCharacter(id, slotNumber, formData);
+    else await slotsApi.updateBackground(id, slotNumber, formData);
+    await load();
     setModal(null);
   }
 
-  async function handleSlotDelete(type, slotNumber) {
-    if (!confirm('Clear this layer?')) return;
-    if (type === 'character') await slotsApi.deleteCharacter(id, slotNumber);
-    else await slotsApi.deleteBackground(id, slotNumber);
-    if (selectedSlot?.type === type && selectedSlot?.num === slotNumber) setSelectedSlot(null);
-    await loadProject();
+  async function handleDelete(type, num) {
+    if (!confirm('Remove this layer?')) return;
+    if (type==='character') await slotsApi.deleteCharacter(id, num);
+    else await slotsApi.deleteBackground(id, num);
+    if (selectedSlot?.type===type && selectedSlot?.num===num) setSelectedSlot(null);
+    await load();
   }
 
   function getSlot(type, n) {
-    if (!project) return null;
-    return (type === 'character' ? project.characters : project.backgrounds)
-      ?.find(s => s.slot_number === n) || null;
+    return (type==='character' ? project?.characters : project?.backgrounds)?.find(s=>s.slot_number===n)||null;
+  }
+
+  // How many slots are currently configured per type
+  function usedSlots(type) {
+    const arr = type==='character' ? project?.characters : project?.backgrounds;
+    return arr?.length || 0;
+  }
+
+  // Next available slot number
+  function nextSlot(type) {
+    const used = (type==='character' ? project?.characters : project?.backgrounds)||[];
+    for (let i=1;i<=MAX_PER_TYPE;i++) if (!used.find(s=>s.slot_number===i)) return i;
+    return null;
   }
 
   if (loading) return (
-    <div style={{ height:'100vh', background:'#080d1a', display:'flex', alignItems:'center', justifyContent:'center', color:'#4a6080', fontFamily:'Inter,sans-serif', fontSize:'13px' }}>
-      Loading…
-    </div>
+    <div style={{height:'100vh',background:'#f0f2f5',display:'flex',alignItems:'center',justifyContent:'center',color:'#9aa5b4',fontFamily:'Inter,sans-serif'}}>Loading…</div>
   );
 
-  // All layers combined for the timeline
-  const allLayers = [
-    ...Array.from({ length: TOTAL_SLOTS }, (_, i) => ({ type:'character', num: i+1, slot: getSlot('character', i+1) })),
-    ...Array.from({ length: TOTAL_SLOTS }, (_, i) => ({ type:'background', num: i+1, slot: getSlot('background', i+1) })),
-  ];
+  const chars = Array.from({length:MAX_PER_TYPE},(_,i)=>i+1).filter(n=>getSlot('character',n));
+  const bgs   = Array.from({length:MAX_PER_TYPE},(_,i)=>i+1).filter(n=>getSlot('background',n));
+  const allConfigured = [...chars.map(n=>({type:'character',n})), ...bgs.map(n=>({type:'background',n}))];
 
   return (
-    <div style={{ height:'100vh', display:'flex', flexDirection:'column', background:'#080d1a', fontFamily:'Inter,system-ui,sans-serif', overflow:'hidden' }}>
+    <div style={S.app}>
 
-      {/* ══ TOP BAR ══════════════════════════════════════════ */}
-      <div style={{ height:'44px', background:'#0d1526', borderBottom:'1px solid #1a2d4a', display:'flex', alignItems:'center', paddingInline:'14px', gap:'10px', flexShrink:0, zIndex:20 }}>
-
-        <Link to="/" style={{ display:'flex', alignItems:'center', gap:'8px', textDecoration:'none', flexShrink:0 }}>
-          <span style={{ fontSize:'18px' }}>🎬</span>
-          <span style={{ color:'#fff', fontWeight:700, fontSize:'13px' }}>
-            Macrometro <span style={{ color:'#00d4ff' }}>Animation</span>
+      {/* ── TOP BAR ─────────────────────────────────── */}
+      <div style={S.topbar}>
+        <Link to="/" style={{textDecoration:'none',display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{fontSize:'20px'}}>🎬</span>
+          <span style={{fontWeight:800,fontSize:'14px',color:'#1a2535'}}>
+            Macrometro <span style={{color:'#00b4d8'}}>Animation</span>
           </span>
         </Link>
 
-        <span style={{ width:'1px', height:'18px', background:'#1a2d4a', margin:'0 4px' }} />
+        <span style={{width:'1px',height:'20px',background:'#dde1e7'}}/>
 
-        {editingName ? (
-          <input autoFocus value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            onBlur={saveName} onKeyDown={e => e.key==='Enter' && saveName()}
-            style={{ background:'transparent', border:'none', borderBottom:'1px solid #00d4ff', color:'#fff', fontWeight:600, fontSize:'13px', outline:'none', width:'160px' }}
-          />
-        ) : (
-          <button onClick={() => setEditingName(true)}
-            style={{ background:'none', border:'none', color:'#e0f0ff', fontWeight:600, fontSize:'13px', cursor:'pointer', padding:0 }}>
-            {project.name} <span style={{ color:'#2a4060', fontSize:'11px' }}>✏</span>
-          </button>
-        )}
+        {editingName
+          ? <input autoFocus value={nameInput}
+              onChange={e=>setNameInput(e.target.value)}
+              onBlur={saveName} onKeyDown={e=>e.key==='Enter'&&saveName()}
+              style={{border:'none',borderBottom:'2px solid #00b4d8',outline:'none',fontWeight:600,fontSize:'14px',color:'#1a2535',background:'transparent',width:'180px'}}/>
+          : <button onClick={()=>setEditingName(true)}
+              style={{background:'none',border:'none',fontWeight:600,fontSize:'14px',color:'#1a2535',cursor:'pointer',display:'flex',alignItems:'center',gap:'6px'}}>
+              {project.name}
+              <span style={{fontSize:'12px',color:'#9aa5b4'}}>✏</span>
+            </button>
+        }
 
-        <div style={{ marginLeft:'auto', display:'flex', gap:'8px', alignItems:'center' }}>
+        <div style={{marginLeft:'auto',display:'flex',gap:'8px',alignItems:'center'}}>
           <Link to={`/project/${id}/upload`}
-            style={{ background:'#00d4ff', color:'#080d1a', fontWeight:700, fontSize:'12px', padding:'6px 16px', borderRadius:'8px', textDecoration:'none', boxShadow:'0 0 14px rgba(0,212,255,0.4)' }}>
+            style={{background:'#00b4d8',color:'#fff',fontWeight:700,fontSize:'13px',padding:'7px 18px',borderRadius:'8px',textDecoration:'none',boxShadow:'0 2px 8px rgba(0,180,216,0.35)'}}>
             + New Video
           </Link>
         </div>
       </div>
 
-      {/* ══ MIDDLE ROW: LEFT PANEL + CANVAS ══════════════════ */}
-      <div style={{ flex:1, display:'flex', overflow:'hidden', minHeight:0 }}>
+      {/* ── MIDDLE: PANEL + CANVAS ──────────────────── */}
+      <div style={S.middle}>
 
-        {/* ── LEFT PANEL ───────────────────────────────────── */}
-        <div style={{ width:'230px', flexShrink:0, background:'#0a1020', borderRight:'1px solid #1a2d4a', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        {/* LEFT PANEL */}
+        <div style={S.leftPanel}>
 
-          {/* Characters */}
-          <div style={{ borderBottom:'1px solid #1a2d4a', flexShrink:0 }}>
-            <div style={{ padding:'6px 12px', background:'#080d1a', display:'flex', alignItems:'center', gap:'6px', position:'sticky', top:0 }}>
-              <span style={{ fontSize:'11px' }}>👤</span>
-              <span style={{ color:'#00d4ff', fontSize:'10px', fontWeight:700, letterSpacing:'0.1em' }}>CHARACTERS</span>
+          {/* CHARACTERS */}
+          <div style={{borderBottom:'1px solid #dde1e7'}}>
+            <div style={S.groupHead}>
+              <span style={S.groupTitle}>👤 Characters</span>
+              {usedSlots('character') < MAX_PER_TYPE && (
+                <button style={S.addBtn}
+                  onClick={()=>{ const n=nextSlot('character'); if(n) setModal({type:'character',slotNumber:n,slot:null}); }}>
+                  + Add
+                </button>
+              )}
             </div>
-            {Array.from({ length: TOTAL_SLOTS }, (_, i) => i+1).map(num => (
-              <LayerRow key={num} num={num} slot={getSlot('character', num)}
-                isSelected={selectedSlot?.type==='character' && selectedSlot?.num===num}
-                onClick={() => setSelectedSlot({ type:'character', num, slot: getSlot('character', num) })}
-                onEdit={() => setModal({ type:'character', slotNumber:num, slot: getSlot('character', num) })}
-                onDelete={() => handleSlotDelete('character', num)}
-              />
-            ))}
+
+            {chars.length===0
+              ? <div style={{padding:'8px 14px 12px',color:'#c0c8d4',fontSize:'11px',fontStyle:'italic'}}>
+                  No characters yet
+                  <br/>
+                  <button style={{...S.addBtn,marginTop:'6px'}}
+                    onClick={()=>setModal({type:'character',slotNumber:1,slot:null})}>
+                    + Add first character
+                  </button>
+                </div>
+              : chars.map(n=>{
+                  const slot=getSlot('character',n);
+                  const isSel=selectedSlot?.type==='character'&&selectedSlot?.num===n;
+                  return (
+                    <LayerItem key={n} slot={slot} isSelected={isSel}
+                      icon="👤"
+                      onClick={()=>setSelectedSlot({type:'character',num:n,slot})}
+                      onEdit={()=>setModal({type:'character',slotNumber:n,slot})}
+                      onDelete={()=>handleDelete('character',n)}/>
+                  );
+                })
+            }
           </div>
 
-          {/* Backgrounds */}
-          <div style={{ flex:1, overflow:'auto' }}>
-            <div style={{ padding:'6px 12px', background:'#080d1a', display:'flex', alignItems:'center', gap:'6px', position:'sticky', top:0, zIndex:2 }}>
-              <span style={{ fontSize:'11px' }}>🌄</span>
-              <span style={{ color:'#7df9ff', fontSize:'10px', fontWeight:700, letterSpacing:'0.1em' }}>BACKGROUNDS</span>
+          {/* BACKGROUNDS */}
+          <div style={{flex:1,overflow:'auto'}}>
+            <div style={S.groupHead}>
+              <span style={S.groupTitle}>🌄 Backgrounds</span>
+              {usedSlots('background') < MAX_PER_TYPE && (
+                <button style={S.addBtn}
+                  onClick={()=>{ const n=nextSlot('background'); if(n) setModal({type:'background',slotNumber:n,slot:null}); }}>
+                  + Add
+                </button>
+              )}
             </div>
-            {Array.from({ length: TOTAL_SLOTS }, (_, i) => i+1).map(num => (
-              <LayerRow key={num} num={num} slot={getSlot('background', num)}
-                isSelected={selectedSlot?.type==='background' && selectedSlot?.num===num}
-                onClick={() => setSelectedSlot({ type:'background', num, slot: getSlot('background', num) })}
-                onEdit={() => setModal({ type:'background', slotNumber:num, slot: getSlot('background', num) })}
-                onDelete={() => handleSlotDelete('background', num)}
-              />
-            ))}
+
+            {bgs.length===0
+              ? <div style={{padding:'8px 14px 12px',color:'#c0c8d4',fontSize:'11px',fontStyle:'italic'}}>
+                  No backgrounds yet
+                  <br/>
+                  <button style={{...S.addBtn,marginTop:'6px'}}
+                    onClick={()=>setModal({type:'background',slotNumber:1,slot:null})}>
+                    + Add first background
+                  </button>
+                </div>
+              : bgs.map(n=>{
+                  const slot=getSlot('background',n);
+                  const isSel=selectedSlot?.type==='background'&&selectedSlot?.num===n;
+                  return (
+                    <LayerItem key={n} slot={slot} isSelected={isSel}
+                      icon="🌄"
+                      onClick={()=>setSelectedSlot({type:'background',num:n,slot})}
+                      onEdit={()=>setModal({type:'background',slotNumber:n,slot})}
+                      onDelete={()=>handleDelete('background',n)}/>
+                  );
+                })
+            }
           </div>
         </div>
 
-        {/* ── CANVAS (WHITE) ───────────────────────────────── */}
-        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        {/* CANVAS */}
+        <div style={S.canvasWrap}>
+          <div style={S.canvasBg}/>
 
-          {/* Canvas toolbar */}
-          <div style={{ height:'30px', background:'#0d1526', borderBottom:'1px solid #1a2d4a', display:'flex', alignItems:'center', paddingInline:'12px', gap:'10px', flexShrink:0 }}>
-            <span style={{ color:'#4a6080', fontSize:'11px', fontFamily:'monospace' }}>
-              {selectedSlot?.slot ? `Layer: ${selectedSlot.slot.name}` : 'Canvas View'}
-            </span>
-            {selectedSlot?.slot && (
-              <button onClick={() => setModal({ type:selectedSlot.type, slotNumber:selectedSlot.num, slot:selectedSlot.slot })}
-                style={{ marginLeft:'auto', background:'rgba(0,212,255,0.1)', border:'1px solid rgba(0,212,255,0.25)', color:'#00d4ff', fontSize:'10px', padding:'2px 10px', borderRadius:'5px', cursor:'pointer' }}>
-                Edit Layer
-              </button>
-            )}
-          </div>
-
-          {/* WHITE CANVAS */}
-          <div style={{ flex:1, background:'#f0f2f5', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
-
-            {/* Checkerboard for transparency indication */}
-            <div style={{
-              position:'absolute', inset:0,
-              backgroundImage:`linear-gradient(45deg, #e0e3e8 25%, transparent 25%),
-                linear-gradient(-45deg, #e0e3e8 25%, transparent 25%),
-                linear-gradient(45deg, transparent 75%, #e0e3e8 75%),
-                linear-gradient(-45deg, transparent 75%, #e0e3e8 75%)`,
-              backgroundSize:'20px 20px',
-              backgroundPosition:'0 0, 0 10px, 10px -10px, -10px 0px',
-              opacity:0.5,
-            }} />
-
-            {selectedSlot?.slot ? (
-              <div style={{ position:'relative', zIndex:1, textAlign:'center', maxHeight:'100%', padding:'20px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-                {selectedSlot.slot.reference_image_url ? (
-                  <div>
-                    <img
-                      src={`${import.meta.env.VITE_API_URL || ''}/api/download?key=${encodeURIComponent(selectedSlot.slot.reference_image_url)}`}
-                      alt={selectedSlot.slot.name}
-                      style={{ maxHeight:'55vh', maxWidth:'100%', boxShadow:'0 8px 32px rgba(0,0,0,0.25)', borderRadius:'4px', display:'block' }}
-                    />
-                    <p style={{ color:'#1a2d4a', fontSize:'13px', fontWeight:600, marginTop:'12px' }}>
-                      {selectedSlot.slot.name}
-                    </p>
-                    {selectedSlot.slot.description && (
-                      <p style={{ color:'#6b7c93', fontSize:'11px', marginTop:'3px' }}>
-                        {selectedSlot.slot.description}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ textAlign:'center' }}>
-                    <div style={{ fontSize:'56px', marginBottom:'14px', opacity:0.25 }}>
-                      {selectedSlot.type === 'character' ? '👤' : '🌄'}
-                    </div>
-                    <p style={{ color:'#2a3a50', fontSize:'16px', fontWeight:700, marginBottom:'6px' }}>
-                      {selectedSlot.slot.name}
-                    </p>
-                    <p style={{ color:'#8a9bb0', fontSize:'12px', marginBottom:'18px' }}>
-                      No reference image
-                    </p>
-                    <button
-                      onClick={() => setModal({ type:selectedSlot.type, slotNumber:selectedSlot.num, slot:selectedSlot.slot })}
-                      style={{ background:'#00d4ff', color:'#080d1a', fontWeight:700, fontSize:'12px', padding:'8px 20px', borderRadius:'8px', border:'none', cursor:'pointer', boxShadow:'0 0 16px rgba(0,212,255,0.4)' }}>
-                      + Upload Reference Image
-                    </button>
-                  </div>
-                )}
+          <div style={{position:'relative',zIndex:1,textAlign:'center',padding:'24px',maxWidth:'80%'}}>
+            {selectedSlot?.slot?.reference_image_url ? (
+              <div>
+                <img
+                  src={`${import.meta.env.VITE_API_URL||''}/api/download?key=${encodeURIComponent(selectedSlot.slot.reference_image_url)}`}
+                  alt={selectedSlot.slot.name}
+                  style={{maxHeight:'55vh',maxWidth:'100%',boxShadow:'0 8px 40px rgba(0,0,0,0.15)',borderRadius:'6px',display:'block',margin:'0 auto'}}
+                />
+                <p style={{color:'#1a2535',fontWeight:700,fontSize:'15px',marginTop:'14px'}}>{selectedSlot.slot.name}</p>
+                <p style={{color:'#6b7c93',fontSize:'12px',marginTop:'3px'}}>{selectedSlot.slot.description}</p>
+              </div>
+            ) : selectedSlot?.slot ? (
+              <div>
+                <div style={{fontSize:'60px',marginBottom:'14px',opacity:0.2}}>{selectedSlot.type==='character'?'👤':'🌄'}</div>
+                <p style={{color:'#1a2535',fontSize:'18px',fontWeight:700,marginBottom:'6px'}}>{selectedSlot.slot.name}</p>
+                <p style={{color:'#9aa5b4',fontSize:'12px',marginBottom:'20px'}}>{selectedSlot.slot.description||'No description'}</p>
+                <button onClick={()=>setModal({type:selectedSlot.type,slotNumber:selectedSlot.num,slot:selectedSlot.slot})}
+                  style={{background:'#00b4d8',color:'#fff',fontWeight:700,fontSize:'12px',padding:'8px 20px',borderRadius:'8px',border:'none',cursor:'pointer'}}>
+                  + Upload Reference Image
+                </button>
               </div>
             ) : (
-              <div style={{ position:'relative', zIndex:1, textAlign:'center', padding:'24px' }}>
-                <div style={{ fontSize:'64px', opacity:0.15, marginBottom:'18px' }}>🎬</div>
-                <p style={{ color:'#2a3a50', fontSize:'22px', fontWeight:700, marginBottom:'8px' }}>
-                  {project.name}
-                </p>
-                <p style={{ color:'#8a9bb0', fontSize:'13px', marginBottom:'28px' }}>
-                  Click a layer on the left to configure it, or upload frames to start.
+              <div>
+                <div style={{fontSize:'64px',marginBottom:'16px',opacity:0.12}}>🎬</div>
+                <p style={{color:'#1a2535',fontSize:'22px',fontWeight:800,marginBottom:'8px'}}>{project.name}</p>
+                <p style={{color:'#9aa5b4',fontSize:'13px',marginBottom:'26px'}}>
+                  Add characters & backgrounds on the left,<br/>then upload your frames.
                 </p>
                 <Link to={`/project/${id}/upload`}
-                  style={{ background:'#00d4ff', color:'#080d1a', fontWeight:700, fontSize:'13px', padding:'11px 28px', borderRadius:'10px', textDecoration:'none', boxShadow:'0 0 20px rgba(0,212,255,0.45)', display:'inline-block' }}>
+                  style={{background:'#00b4d8',color:'#fff',fontWeight:700,fontSize:'14px',padding:'12px 28px',borderRadius:'10px',textDecoration:'none',boxShadow:'0 4px 14px rgba(0,180,216,0.4)',display:'inline-block'}}>
                   Upload Frames & Process →
                 </Link>
               </div>
@@ -230,106 +251,74 @@ export default function Project() {
         </div>
       </div>
 
-      {/* ══ TIMELINE (ALWAYS AT BOTTOM) ════════════════════════ */}
-      <div style={{ height:'160px', background:'#0a1020', borderTop:'2px solid #1a2d4a', display:'flex', flexDirection:'column', flexShrink:0 }}>
-
-        {/* Timeline header */}
-        <div style={{ height:'28px', background:'#080d1a', borderBottom:'1px solid #1a2d4a', display:'flex', alignItems:'center', flexShrink:0 }}>
-          {/* Layer name column header */}
-          <div style={{ width:'230px', flexShrink:0, paddingInline:'12px', borderRight:'1px solid #1a2d4a' }}>
-            <span style={{ color:'#2a4060', fontSize:'10px', fontFamily:'monospace', textTransform:'uppercase', letterSpacing:'0.1em' }}>Layers</span>
-          </div>
-          {/* Frame numbers */}
-          <div style={{ flex:1, overflow:'hidden', paddingInline:'8px', display:'flex', alignItems:'center', gap:'2px' }}>
-            <span style={{ color:'#2a4060', fontSize:'10px', fontFamily:'monospace', textTransform:'uppercase', letterSpacing:'0.1em' }}>Timeline — Upload a video to begin</span>
-          </div>
-          {/* New video button */}
+      {/* ── TIMELINE (ALWAYS AT BOTTOM) ─────────────── */}
+      <div style={S.timeline}>
+        <div style={S.tlHead}>
+          <div style={S.tlColHead}>Layers</div>
+          <div style={S.tlFrameHead}>Timeline</div>
           <Link to={`/project/${id}/upload`}
-            style={{ marginRight:'12px', background:'rgba(0,212,255,0.1)', border:'1px solid rgba(0,212,255,0.25)', color:'#00d4ff', fontSize:'10px', fontWeight:600, padding:'3px 10px', borderRadius:'5px', textDecoration:'none', flexShrink:0 }}>
+            style={{marginRight:'12px',background:'#00b4d8',color:'#fff',fontSize:'11px',fontWeight:700,padding:'4px 12px',borderRadius:'6px',textDecoration:'none',flexShrink:0}}>
             ▶ Upload
           </Link>
         </div>
 
-        {/* Timeline rows — empty until video uploaded */}
-        <div style={{ flex:1, overflow:'auto', display:'flex', flexDirection:'column' }}>
-          {allLayers.filter(l => l.slot).length === 0 ? (
-            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <span style={{ color:'#1a2d4a', fontSize:'11px', fontFamily:'monospace' }}>
-                No layers configured — add characters and backgrounds to get started
-              </span>
+        <div style={{flex:1,overflow:'auto'}}>
+          {allConfigured.length===0 ? (
+            <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',height:'100%'}}>
+              <span style={{color:'#c0c8d4',fontSize:'12px'}}>Add layers to see the timeline</span>
             </div>
           ) : (
-            allLayers.filter(l => l.slot).map(({ type, num, slot }) => (
-              <div key={`${type}-${num}`}
-                style={{ height:'26px', display:'flex', alignItems:'center', borderBottom:'1px solid rgba(26,45,74,0.4)', flexShrink:0 }}>
-                {/* Layer name */}
-                <div style={{ width:'230px', flexShrink:0, paddingInline:'12px', borderRight:'1px solid #1a2d4a', display:'flex', alignItems:'center', gap:'6px', overflow:'hidden' }}>
-                  <span style={{ fontSize:'10px' }}>{type === 'character' ? '👤' : '🌄'}</span>
-                  <span style={{ color:'#7a9ab8', fontSize:'11px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{slot.name}</span>
+            allConfigured.map(({type,n})=>{
+              const slot=getSlot(type,n);
+              return (
+                <div key={`${type}-${n}`} style={S.tlRow}>
+                  <div style={S.tlName}>
+                    <span style={{fontSize:'12px'}}>{type==='character'?'👤':'🌄'}</span>
+                    <span style={{color:'#1a2535',fontSize:'12px',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{slot?.name}</span>
+                  </div>
+                  <div style={S.tlTrack}>
+                    {Array.from({length:60},(_,i)=>(
+                      <div key={i} style={{width:'18px',height:'16px',borderRadius:'3px',background:'#edf0f4',border:'1px solid #dde1e7',flexShrink:0}}/>
+                    ))}
+                    <span style={{color:'#c0c8d4',fontSize:'10px',marginLeft:'4px',flexShrink:0}}>…</span>
+                  </div>
                 </div>
-                {/* Empty frame track */}
-                <div style={{ flex:1, height:'100%', paddingInline:'8px', display:'flex', alignItems:'center', gap:'2px' }}>
-                  {Array.from({ length: 40 }, (_, i) => (
-                    <div key={i} style={{ width:'16px', height:'14px', borderRadius:'2px', background:'#111e35', border:'1px solid #1a2d4a', flexShrink:0 }} />
-                  ))}
-                  <span style={{ color:'#1a2d4a', fontSize:'9px', fontFamily:'monospace', marginLeft:'4px', flexShrink:0 }}>…</span>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
 
-      {modal && (
-        <SlotModal slot={modal.slot} slotType={modal.type}
-          onSave={handleSlotSave} onClose={() => setModal(null)} />
-      )}
+      {modal&&<SlotModal slot={modal.slot} slotType={modal.type} onSave={handleSave} onClose={()=>setModal(null)}/>}
     </div>
   );
 }
 
-function LayerRow({ num, slot, isSelected, onClick, onEdit, onDelete }) {
-  const [hovered, setHovered] = useState(false);
+function LayerItem({ slot, isSelected, icon, onClick, onEdit, onDelete }) {
+  const [hov, setHov] = useState(false);
   return (
     <div onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ display:'flex', alignItems:'center', height:'30px', cursor:'pointer', borderBottom:'1px solid rgba(26,45,74,0.4)',
-        background: isSelected ? 'rgba(0,212,255,0.1)' : hovered ? 'rgba(255,255,255,0.03)' : 'transparent',
-        transition:'background .1s' }}>
-
-      {/* Active indicator */}
-      <div style={{ width:'3px', alignSelf:'stretch', background: slot ? (isSelected ? '#00d4ff' : 'rgba(0,212,255,0.35)') : 'transparent', flexShrink:0 }} />
-
-      {/* Number */}
-      <div style={{ width:'28px', textAlign:'center', color: isSelected ? '#00d4ff' : '#2a4060', fontSize:'10px', fontFamily:'monospace', flexShrink:0 }}>
-        {String(num).padStart(2,'0')}
-      </div>
-
-      {/* Name */}
-      <div style={{ flex:1, overflow:'hidden', paddingInline:'6px' }}>
-        {slot ? (
-          <span style={{ color: isSelected ? '#e0f8ff' : '#8ab0cc', fontSize:'11px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'block' }}>
-            {slot.name}
-          </span>
-        ) : (
-          <span style={{ color:'#1a2d4a', fontSize:'10px', fontStyle:'italic' }}>Empty</span>
-        )}
-      </div>
-
-      {/* Hover actions */}
-      {hovered && (
-        <div style={{ display:'flex', gap:'2px', paddingRight:'6px', flexShrink:0 }}>
-          <button onClick={e => { e.stopPropagation(); onEdit(); }}
-            style={{ background:'rgba(0,212,255,0.12)', border:'none', color:'#00d4ff', fontSize:'9px', padding:'2px 6px', borderRadius:'3px', cursor:'pointer', fontWeight:600 }}>
-            {slot ? 'Edit' : '+'}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{
+        display:'flex',alignItems:'center',gap:'8px',padding:'8px 14px',cursor:'pointer',
+        borderBottom:'1px solid #f0f2f5',borderLeft:`3px solid ${isSelected?'#00b4d8':'transparent'}`,
+        background: isSelected?'#f0fbff': hov?'#f7f9fc':'transparent',
+        transition:'all .1s',
+      }}>
+      <span style={{fontSize:'14px'}}>{icon}</span>
+      <span style={{flex:1,fontSize:'12px',fontWeight:500,color:'#1a2535',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+        {slot?.name}
+      </span>
+      {hov&&(
+        <div style={{display:'flex',gap:'3px',flexShrink:0}}>
+          <button onClick={e=>{e.stopPropagation();onEdit();}}
+            style={{background:'#e8f8fc',border:'none',color:'#00b4d8',fontSize:'10px',fontWeight:700,padding:'2px 7px',borderRadius:'4px',cursor:'pointer'}}>
+            Edit
           </button>
-          {slot && (
-            <button onClick={e => { e.stopPropagation(); onDelete(); }}
-              style={{ background:'rgba(255,77,109,0.12)', border:'none', color:'#ff4d6d', fontSize:'9px', padding:'2px 6px', borderRadius:'3px', cursor:'pointer' }}>
-              ✕
-            </button>
-          )}
+          <button onClick={e=>{e.stopPropagation();onDelete();}}
+            style={{background:'#fef2f2',border:'none',color:'#ef4444',fontSize:'10px',fontWeight:700,padding:'2px 7px',borderRadius:'4px',cursor:'pointer'}}>
+            ✕
+          </button>
         </div>
       )}
     </div>
