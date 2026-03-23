@@ -149,6 +149,28 @@ export default function Project() {
 
   function onDrawDown(e) {
     if ((tool!=='pencil' && tool!=='eraser') || !selectedBase) return;
+
+    // Eraser: if frame has an image, merge it into the drawing canvas first
+    if (tool === 'eraser') {
+      const frame = baseFrames.find(f => f.id === selectedBase);
+      if (frame?.imageUrl) {
+        const canvas = drawCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+          // Draw image behind existing strokes
+          ctx.globalCompositeOperation = 'destination-over';
+          ctx.drawImage(img, 0, 0, DRAW_W, DRAW_H);
+          ctx.globalCompositeOperation = 'source-over';
+        };
+        img.src = frame.imageUrl;
+        // Remove the <img> tag — image is now part of the canvas
+        setBaseFrames(prev => prev.map(f =>
+          f.id === selectedBase ? { ...f, imageUrl: null } : f
+        ));
+      }
+    }
+
     isDrawingRef.current = true;
     lastPosRef.current   = getDrawPos(e);
     e.preventDefault();
