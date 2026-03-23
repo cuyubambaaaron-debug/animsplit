@@ -4,25 +4,20 @@ import { projectsApi } from '../api';
 import Header from '../components/Header';
 
 export default function Home() {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [showForm, setShowForm] = useState(false);
+  const [projects, setProjects]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [creating, setCreating]   = useState(false);
+  const [newName, setNewName]     = useState('');
+  const [showForm, setShowForm]   = useState(false);
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  useEffect(() => { loadProjects(); }, []);
 
   async function loadProjects() {
     try {
       const { data } = await projectsApi.list();
       setProjects(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }
 
   async function handleCreate(e) {
@@ -34,68 +29,65 @@ export default function Home() {
       setProjects((p) => [data, ...p]);
       setNewName('');
       setShowForm(false);
-    } catch (e) {
-      alert('Error creating project');
-    } finally {
-      setCreating(false);
-    }
+    } catch (e) { alert('Error creating project'); }
+    finally { setCreating(false); }
   }
 
   async function handleDelete(id, e) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!confirm('Delete this project? This cannot be undone.')) return;
+    e.preventDefault(); e.stopPropagation();
+    if (!confirm('Delete this project?')) return;
     try {
       await projectsApi.delete(id);
       setProjects((p) => p.filter((x) => x.id !== id));
-    } catch (e) {
-      alert('Error deleting project');
-    }
+    } catch (e) { alert('Error deleting project'); }
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-navy">
       <Header
         action={
           <button
             onClick={() => setShowForm(true)}
-            className="bg-accent hover:bg-accent-light text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            className="bg-cyan text-navy text-sm font-semibold px-4 py-2 rounded-xl hover:shadow-cyan transition-all"
           >
             + New Project
           </button>
         }
       />
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-white">Projects</h2>
-          <p className="text-slate-400 text-sm mt-1">
-            Separate anime characters and backgrounds from video frames
+      <main className="max-w-7xl mx-auto px-5 py-10">
+        {/* Hero */}
+        <div className="mb-10">
+          <h1 className="text-3xl font-bold text-white mb-1">
+            Projects
+          </h1>
+          <p className="text-muted text-sm">
+            Separate anime elements from video frames — automatically.
           </p>
         </div>
 
-        {/* New project form */}
+        {/* Create form */}
         {showForm && (
-          <div className="bg-card border border-accent/40 rounded-xl p-5 mb-6">
+          <div className="bg-panel border border-cyan/30 rounded-2xl p-5 mb-8 shadow-cyan">
             <form onSubmit={handleCreate} className="flex gap-3">
               <input
                 autoFocus
-                className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-accent"
-                placeholder="Project name (e.g. Episode 12)"
+                className="flex-1 bg-navy border border-border rounded-xl px-4 py-2.5 text-white placeholder-muted focus:outline-none focus:border-cyan transition-colors"
+                placeholder="Project name — e.g. Episode 01"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
               />
               <button
                 type="submit"
                 disabled={creating || !newName.trim()}
-                className="bg-accent hover:bg-accent-light text-white px-5 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+                className="bg-cyan text-navy font-semibold px-5 py-2.5 rounded-xl hover:shadow-cyan transition-all disabled:opacity-40"
               >
                 {creating ? 'Creating…' : 'Create'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="text-slate-400 hover:text-white px-3 py-2 rounded-lg border border-border transition-colors"
+                className="text-muted px-4 py-2.5 rounded-xl border border-border hover:border-muted transition-colors"
               >
                 Cancel
               </button>
@@ -103,34 +95,46 @@ export default function Home() {
           </div>
         )}
 
-        {/* Projects grid */}
+        {/* Grid */}
         {loading ? (
-          <div className="text-center py-20 text-slate-500">Loading…</div>
+          <div className="text-center py-24 text-muted text-sm">Loading…</div>
         ) : projects.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="text-5xl mb-4">🎬</div>
-            <p className="text-slate-400">No projects yet. Create one to get started.</p>
+          <div className="text-center py-24">
+            <div className="text-5xl mb-4 opacity-40">🎬</div>
+            <p className="text-muted">No projects yet.</p>
+            <button
+              onClick={() => setShowForm(true)}
+              className="mt-4 text-cyan text-sm hover:text-cyan-glow transition-colors"
+            >
+              Create your first project →
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {projects.map((p) => (
               <Link
                 key={p.id}
                 to={`/project/${p.id}`}
-                className="bg-card border border-border hover:border-accent/60 rounded-xl p-5 group transition-all hover:shadow-lg hover:shadow-accent/10 relative"
+                className="group bg-panel border border-border hover:border-cyan/50 rounded-2xl p-5 transition-all hover:shadow-cyan relative"
               >
-                <div className="flex items-start justify-between">
-                  <div className="text-3xl mb-3">🎞️</div>
-                  <button
-                    onClick={(e) => handleDelete(p.id, e)}
-                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-danger transition-all text-xs px-2 py-1 rounded"
-                  >
-                    Delete
-                  </button>
+                {/* Delete button */}
+                <button
+                  onClick={(e) => handleDelete(p.id, e)}
+                  className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 text-muted hover:text-danger transition-all text-xs"
+                >
+                  ✕
+                </button>
+
+                <div className="w-10 h-10 rounded-xl bg-cyan/10 border border-cyan/20 flex items-center justify-center text-xl mb-4">
+                  🎞️
                 </div>
-                <h3 className="text-white font-semibold truncate">{p.name}</h3>
-                <p className="text-slate-500 text-xs mt-1">
-                  {new Date(p.created_at).toLocaleDateString()}
+                <h3 className="text-white font-semibold truncate group-hover:text-cyan transition-colors">
+                  {p.name}
+                </h3>
+                <p className="text-muted text-xs mt-1">
+                  {new Date(p.created_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric'
+                  })}
                 </p>
               </Link>
             ))}
