@@ -26,26 +26,29 @@ export default function Project() {
   // BASE frames — each frame is { id, imageUrl }
   const [baseFrames, setBaseFrames] = useState([]);
 
-  const canvasRef = useRef();
+  const canvasRef        = useRef();
+  const selectedBaseRef  = useRef(null);   // always has latest value
+  const baseFramesRef    = useRef([]);     // always has latest value
+
+  // Keep refs in sync
+  useEffect(() => { selectedBaseRef.current = selectedBase; }, [selectedBase]);
+  useEffect(() => { baseFramesRef.current   = baseFrames;   }, [baseFrames]);
 
   // ── Native drag & drop on canvas ─────────────────────────────
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-    const over  = e => { e.preventDefault(); setCanvasOver(true); };
-    const leave = ()  => setCanvasOver(false);
-    const drop  = e  => {
-      e.preventDefault();
+    const over  = e => { e.preventDefault(); e.stopPropagation(); setCanvasOver(true); };
+    const leave = e => { e.preventDefault(); setCanvasOver(false); };
+    const drop  = e => {
+      e.preventDefault(); e.stopPropagation();
       setCanvasOver(false);
       const file = e.dataTransfer?.files?.[0];
       if (!file || !file.type.startsWith('image/')) return;
+      const sel = selectedBaseRef.current;
+      if (!sel) { alert('Primero selecciona un frame en BASE (click sobre él)'); return; }
       const url = URL.createObjectURL(file);
-      // assign to selected BASE frame
-      setSelectedBase(sel => {
-        if (!sel) return sel;
-        setBaseFrames(prev => prev.map(f => f.id === sel ? { ...f, imageUrl: url } : f));
-        return sel;
-      });
+      setBaseFrames(baseFramesRef.current.map(f => f.id === sel ? { ...f, imageUrl: url } : f));
     };
     el.addEventListener('dragover',  over);
     el.addEventListener('dragleave', leave);
@@ -55,7 +58,7 @@ export default function Project() {
       el.removeEventListener('dragleave', leave);
       el.removeEventListener('drop',      drop);
     };
-  }, []);  // runs once — handlers use setState callbacks so they always see fresh state
+  }, []);  // monta una vez, usa refs para leer estado fresco
 
   useEffect(() => { load(); }, [id]);
 
@@ -200,15 +203,16 @@ export default function Project() {
             transition:'box-shadow .15s, background .15s',
           }}
         >
+          {/* todos los hijos con pointer-events:none para no bloquear el drop */}
           {/* Grid lines on empty canvas */}
           {!canvasImg && (
-            <div style={{position:'absolute',inset:0,
+            <div style={{position:'absolute',inset:0,pointerEvents:'none',
               backgroundImage:'linear-gradient(#f1f5f9 1px,transparent 1px),linear-gradient(90deg,#f1f5f9 1px,transparent 1px)',
               backgroundSize:'64px 64px'}}/>
           )}
 
           {canvasImg
-            ? <img src={canvasImg} alt="frame" style={{width:'100%',height:'100%',objectFit:'contain',position:'relative',zIndex:1}}/>
+            ? <img src={canvasImg} alt="frame" style={{width:'100%',height:'100%',objectFit:'contain',position:'relative',zIndex:1,pointerEvents:'none'}}/>
             : <div style={{position:'relative',zIndex:1,textAlign:'center',padding:'24px',pointerEvents:'none'}}>
                 {canvasOver
                   ? <p style={{color:'#38bdf8',fontWeight:700,fontSize:'16px'}}>📥 Suelta la imagen aquí</p>
@@ -216,8 +220,8 @@ export default function Project() {
                       <p style={{color:'#94a3b8',fontSize:'12px',fontFamily:'monospace',marginBottom:'8px'}}>1920 × 1080</p>
                       <p style={{color:'#64748b',fontSize:'13px',fontWeight:600,marginBottom:'6px'}}>{project.name}</p>
                       {selectedBase
-                        ? <p style={{color:'#38bdf8',fontSize:'12px'}}>← Arrastra una imagen aquí para asignarla al frame seleccionado</p>
-                        : <p style={{color:'#94a3b8',fontSize:'12px'}}>Selecciona un frame en BASE o agrega uno con +</p>
+                        ? <p style={{color:'#38bdf8',fontSize:'12px'}}>↓ Arrastra una imagen PNG/JPG aquí</p>
+                        : <p style={{color:'#94a3b8',fontSize:'12px'}}>Presiona + en BASE para agregar un frame</p>
                       }
                     </>
                 }
@@ -226,7 +230,7 @@ export default function Project() {
 
           {/* Frame label */}
           {selectedBase && (
-            <div style={{position:'absolute',bottom:'6px',right:'8px',background:'rgba(0,0,0,0.12)',borderRadius:'3px',padding:'2px 7px',fontSize:'9px',color:'#94a3b8',fontFamily:'monospace',zIndex:2}}>
+            <div style={{position:'absolute',bottom:'6px',right:'8px',background:'rgba(0,0,0,0.12)',borderRadius:'3px',padding:'2px 7px',fontSize:'9px',color:'#94a3b8',fontFamily:'monospace',zIndex:2,pointerEvents:'none'}}>
               Frame {(baseFrames.findIndex(f=>f.id===selectedBase)+1).toString().padStart(4,'0')}
             </div>
           )}
