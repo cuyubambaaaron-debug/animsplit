@@ -17,6 +17,7 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/slots', require('./routes/slots'));
 app.use('/api/videos', require('./routes/videos'));
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/download', require('./routes/download'));
 
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'animsplit-api', version: '1.0.0' });
