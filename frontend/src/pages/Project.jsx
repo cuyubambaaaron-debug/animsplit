@@ -158,9 +158,33 @@ export default function Project() {
         const ctx = canvas.getContext('2d');
         const img = new Image();
         img.onload = () => {
-          // Draw image behind existing strokes
+          // Replicate objectFit:contain sizing
+          const imgAspect = img.naturalWidth / img.naturalHeight;
+          const canvasAspect = DRAW_W / DRAW_H;
+          let dw, dh, dx, dy;
+          if (imgAspect > canvasAspect) {
+            dw = DRAW_W; dh = DRAW_W / imgAspect;
+          } else {
+            dh = DRAW_H; dw = DRAW_H * imgAspect;
+          }
+          dx = (DRAW_W - dw) / 2;
+          dy = (DRAW_H - dh) / 2;
+
+          // Apply user translate/scale (convert CSS px → canvas px)
+          const rect = drawCanvasRef.current.getBoundingClientRect();
+          const rx = DRAW_W / rect.width;
+          const ry = DRAW_H / rect.height;
+          const scale = frame.scale || 1;
+          const tx = (frame.x || 0) * rx;
+          const ty = (frame.y || 0) * ry;
+
+          ctx.save();
           ctx.globalCompositeOperation = 'destination-over';
-          ctx.drawImage(img, 0, 0, DRAW_W, DRAW_H);
+          ctx.translate(DRAW_W / 2 + tx, DRAW_H / 2 + ty);
+          ctx.scale(scale, scale);
+          ctx.translate(-DRAW_W / 2, -DRAW_H / 2);
+          ctx.drawImage(img, dx, dy, dw, dh);
+          ctx.restore();
           ctx.globalCompositeOperation = 'source-over';
         };
         img.src = frame.imageUrl;
@@ -373,6 +397,8 @@ export default function Project() {
                   transform:`translate(${curFrame.x||0}px,${curFrame.y||0}px) scale(${curFrame.scale||1})`,
                   transformOrigin:'center center',
                   pointerEvents:'none',
+                  willChange:'transform',
+                  backfaceVisibility:'hidden',
                 }}
               />
             )}
