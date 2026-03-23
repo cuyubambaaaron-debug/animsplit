@@ -26,39 +26,26 @@ export default function Project() {
   // BASE frames — each frame is { id, imageUrl }
   const [baseFrames, setBaseFrames] = useState([]);
 
-  const canvasRef        = useRef();
-  const selectedBaseRef  = useRef(null);   // always has latest value
-  const baseFramesRef    = useRef([]);     // always has latest value
+  const canvasRef  = useRef();
+  const fileRef    = useRef();
 
-  // Keep refs in sync
-  useEffect(() => { selectedBaseRef.current = selectedBase; }, [selectedBase]);
-  useEffect(() => { baseFramesRef.current   = baseFrames;   }, [baseFrames]);
+  // ── Asignar imagen al frame BASE seleccionado ────────────────
+  function assignImageToFrame(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    if (!selectedBase) return;
+    const url = URL.createObjectURL(file);
+    setBaseFrames(prev => prev.map(f => f.id === selectedBase ? { ...f, imageUrl: url } : f));
+  }
 
-  // ── Native drag & drop on canvas ─────────────────────────────
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const over  = e => { e.preventDefault(); e.stopPropagation(); setCanvasOver(true); };
-    const leave = e => { e.preventDefault(); setCanvasOver(false); };
-    const drop  = e => {
-      e.preventDefault(); e.stopPropagation();
-      setCanvasOver(false);
-      const file = e.dataTransfer?.files?.[0];
-      if (!file || !file.type.startsWith('image/')) return;
-      const sel = selectedBaseRef.current;
-      if (!sel) { alert('Primero selecciona un frame en BASE (click sobre él)'); return; }
-      const url = URL.createObjectURL(file);
-      setBaseFrames(baseFramesRef.current.map(f => f.id === sel ? { ...f, imageUrl: url } : f));
-    };
-    el.addEventListener('dragover',  over);
-    el.addEventListener('dragleave', leave);
-    el.addEventListener('drop',      drop);
-    return () => {
-      el.removeEventListener('dragover',  over);
-      el.removeEventListener('dragleave', leave);
-      el.removeEventListener('drop',      drop);
-    };
-  }, []);  // monta una vez, usa refs para leer estado fresco
+  function handleCanvasClick() {
+    if (!selectedBase) return;
+    fileRef.current?.click();
+  }
+
+  function handleFileChange(e) {
+    assignImageToFrame(e.target.files?.[0]);
+    e.target.value = '';
+  }
 
   useEffect(() => { load(); }, [id]);
 
@@ -186,9 +173,16 @@ export default function Project() {
       {/* ── CANVAS ── */}
       <div style={{flex:1,background:'#1a2235',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',minHeight:0,position:'relative'}}>
 
-        {/* White 16:9 canvas — drop target */}
+        {/* hidden file input */}
+        <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFileChange}/>
+
+        {/* White 16:9 canvas */}
         <div
           ref={canvasRef}
+          onClick={handleCanvasClick}
+          onDragOver={e => { e.preventDefault(); setCanvasOver(true); }}
+          onDragLeave={() => setCanvasOver(false)}
+          onDrop={e => { e.preventDefault(); setCanvasOver(false); assignImageToFrame(e.dataTransfer.files?.[0]); }}
           style={{
             background: canvasOver ? '#f0f9ff' : '#ffffff',
             boxShadow: canvasOver
@@ -201,6 +195,7 @@ export default function Project() {
             display:'flex',alignItems:'center',justifyContent:'center',
             position:'relative',overflow:'hidden',
             transition:'box-shadow .15s, background .15s',
+            cursor: selectedBase ? 'pointer' : 'default',
           }}
         >
           {/* todos los hijos con pointer-events:none para no bloquear el drop */}
@@ -220,8 +215,8 @@ export default function Project() {
                       <p style={{color:'#94a3b8',fontSize:'12px',fontFamily:'monospace',marginBottom:'8px'}}>1920 × 1080</p>
                       <p style={{color:'#64748b',fontSize:'13px',fontWeight:600,marginBottom:'6px'}}>{project.name}</p>
                       {selectedBase
-                        ? <p style={{color:'#38bdf8',fontSize:'12px'}}>↓ Arrastra una imagen PNG/JPG aquí</p>
-                        : <p style={{color:'#94a3b8',fontSize:'12px'}}>Presiona + en BASE para agregar un frame</p>
+                        ? <p style={{color:'#38bdf8',fontSize:'13px',fontWeight:600}}>Click aquí para elegir imagen<br/><span style={{fontSize:'11px',fontWeight:400,color:'#64748b'}}>o arrastra un PNG/JPG</span></p>
+                        : <p style={{color:'#94a3b8',fontSize:'12px'}}>Presiona <b>+</b> en BASE y selecciona un frame</p>
                       }
                     </>
                 }
