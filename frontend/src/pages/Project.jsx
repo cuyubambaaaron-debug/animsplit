@@ -149,52 +149,6 @@ export default function Project() {
 
   function onDrawDown(e) {
     if ((tool!=='pencil' && tool!=='eraser') || !selectedBase) return;
-
-    // Eraser: if frame has an image, merge it into the drawing canvas first
-    if (tool === 'eraser') {
-      const frame = baseFrames.find(f => f.id === selectedBase);
-      if (frame?.imageUrl) {
-        const canvas = drawCanvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-        img.onload = () => {
-          // Replicate objectFit:contain sizing
-          const imgAspect = img.naturalWidth / img.naturalHeight;
-          const canvasAspect = DRAW_W / DRAW_H;
-          let dw, dh, dx, dy;
-          if (imgAspect > canvasAspect) {
-            dw = DRAW_W; dh = DRAW_W / imgAspect;
-          } else {
-            dh = DRAW_H; dw = DRAW_H * imgAspect;
-          }
-          dx = (DRAW_W - dw) / 2;
-          dy = (DRAW_H - dh) / 2;
-
-          // Apply user translate/scale (convert CSS px → canvas px)
-          const rect = drawCanvasRef.current.getBoundingClientRect();
-          const rx = DRAW_W / rect.width;
-          const ry = DRAW_H / rect.height;
-          const scale = frame.scale || 1;
-          const tx = (frame.x || 0) * rx;
-          const ty = (frame.y || 0) * ry;
-
-          ctx.save();
-          ctx.globalCompositeOperation = 'destination-over';
-          ctx.translate(DRAW_W / 2 + tx, DRAW_H / 2 + ty);
-          ctx.scale(scale, scale);
-          ctx.translate(-DRAW_W / 2, -DRAW_H / 2);
-          ctx.drawImage(img, dx, dy, dw, dh);
-          ctx.restore();
-          ctx.globalCompositeOperation = 'source-over';
-        };
-        img.src = frame.imageUrl;
-        // Remove the <img> tag — image is now part of the canvas
-        setBaseFrames(prev => prev.map(f =>
-          f.id === selectedBase ? { ...f, imageUrl: null } : f
-        ));
-      }
-    }
-
     isDrawingRef.current = true;
     lastPosRef.current   = getDrawPos(e);
     e.preventDefault();
@@ -208,8 +162,8 @@ export default function Project() {
     ctx.lineCap     = 'round';
     ctx.lineJoin    = 'round';
     if (tool==='eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.strokeStyle = 'rgba(0,0,0,1)';
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = '#ffffff';
     } else {
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = pencilColor;
