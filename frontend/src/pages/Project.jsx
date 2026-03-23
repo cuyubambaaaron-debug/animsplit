@@ -28,23 +28,64 @@ export default function Project() {
 
   const canvasRef  = useRef();
   const fileRef    = useRef();
+  const imgDragRef = useRef(null); // { startX, startY, origX, origY }
+  const didMoveRef = useRef(false);
 
-  // ── Asignar imagen al frame BASE seleccionado ────────────────
+  // ── Imagen: asignar ──────────────────────────────────────────
   function assignImageToFrame(file) {
     if (!file || !file.type.startsWith('image/')) return;
     if (!selectedBase) return;
     const url = URL.createObjectURL(file);
-    setBaseFrames(prev => prev.map(f => f.id === selectedBase ? { ...f, imageUrl: url } : f));
-  }
-
-  function handleCanvasClick() {
-    if (!selectedBase) return;
-    fileRef.current?.click();
+    setBaseFrames(prev => prev.map(f =>
+      f.id === selectedBase ? { ...f, imageUrl: url, x: 0, y: 0, scale: 1 } : f
+    ));
   }
 
   function handleFileChange(e) {
     assignImageToFrame(e.target.files?.[0]);
     e.target.value = '';
+  }
+
+  // ── Imagen: mover con mouse ──────────────────────────────────
+  function handleCanvasMouseDown(e) {
+    if (!selectedBase) return;
+    const frame = baseFrames.find(f => f.id === selectedBase);
+    if (!frame?.imageUrl) {
+      // no image yet → click to upload
+      fileRef.current?.click();
+      return;
+    }
+    didMoveRef.current = false;
+    imgDragRef.current = { startX: e.clientX, startY: e.clientY, origX: frame.x||0, origY: frame.y||0 };
+    e.preventDefault();
+  }
+
+  function handleCanvasMouseMove(e) {
+    if (!imgDragRef.current || !selectedBase) return;
+    const dx = e.clientX - imgDragRef.current.startX;
+    const dy = e.clientY - imgDragRef.current.startY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didMoveRef.current = true;
+    setBaseFrames(prev => prev.map(f =>
+      f.id === selectedBase
+        ? { ...f, x: imgDragRef.current.origX + dx, y: imgDragRef.current.origY + dy }
+        : f
+    ));
+  }
+
+  function handleCanvasMouseUp() {
+    imgDragRef.current = null;
+  }
+
+  // ── Imagen: zoom con rueda ───────────────────────────────────
+  function handleCanvasWheel(e) {
+    if (!selectedBase) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.05 : 0.05;
+    setBaseFrames(prev => prev.map(f =>
+      f.id === selectedBase
+        ? { ...f, scale: Math.max(0.1, Math.min(5, (f.scale||1) + delta)) }
+        : f
+    ));
   }
 
   useEffect(() => { load(); }, [id]);
@@ -179,7 +220,11 @@ export default function Project() {
         {/* White 16:9 canvas */}
         <div
           ref={canvasRef}
-          onClick={handleCanvasClick}
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onMouseLeave={handleCanvasMouseUp}
+          onWheel={handleCanvasWheel}
           onDragOver={e => { e.preventDefault(); setCanvasOver(true); }}
           onDragLeave={() => setCanvasOver(false)}
           onDrop={e => { e.preventDefault(); setCanvasOver(false); assignImageToFrame(e.dataTransfer.files?.[0]); }}
@@ -194,8 +239,13 @@ export default function Project() {
             width:'min(100% - 20px, calc((100vh - 44px - 220px) * 16/9))',
             display:'flex',alignItems:'center',justifyContent:'center',
             position:'relative',overflow:'hidden',
-            transition:'box-shadow .15s, background .15s',
-            cursor: selectedBase ? 'pointer' : 'default',
+            transition:'box-shadow .15s',
+            cursor: (() => {
+              if (!selectedBase) return 'default';
+              const f = baseFrames.find(f=>f.id===selectedBase);
+              return f?.imageUrl ? (imgDragRef.current ? 'grabbing' : 'grab') : 'pointer';
+            })(),
+            userSelect:'none',
           }}
         >
           {/* todos los hijos con pointer-events:none para no bloquear el drop */}
@@ -207,7 +257,12 @@ export default function Project() {
           )}
 
           {canvasImg
-            ? <img src={canvasImg} alt="frame" style={{width:'100%',height:'100%',objectFit:'contain',position:'relative',zIndex:1,pointerEvents:'none'}}/>
+            ? <img src={canvasImg} alt="frame" style={{
+                position:'absolute', zIndex:1, pointerEvents:'none',
+                maxWidth:'100%', maxHeight:'100%',
+                transform:`translate(${baseFrames.find(f=>f.id===selectedBase)?.x||0}px, ${baseFrames.find(f=>f.id===selectedBase)?.y||0}px) scale(${baseFrames.find(f=>f.id===selectedBase)?.scale||1})`,
+                transformOrigin:'center center',
+              }}/>
             : <div style={{position:'relative',zIndex:1,textAlign:'center',padding:'24px',pointerEvents:'none'}}>
                 {canvasOver
                   ? <p style={{color:'#38bdf8',fontWeight:700,fontSize:'16px'}}>📥 Suelta la imagen aquí</p>
