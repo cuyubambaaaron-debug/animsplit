@@ -90,32 +90,50 @@ export default function Project() {
     if (selectedBase===fid) setSelectedBase(null);
   }
 
-  // ── Restore drawing when switching frames ─────────────────────
+  // ── Restore canvas when switching frames ─────────────────────
   useEffect(() => {
     const canvas = drawCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, DRAW_W, DRAW_H);
     const frame = baseFrames.find(f=>f.id===selectedBase);
-    if (frame?.drawing) {
+    // draw saved composite (image + drawings) onto canvas
+    if (frame?.composite) {
       const img = new Image();
       img.onload = () => ctx.drawImage(img, 0, 0, DRAW_W, DRAW_H);
-      img.src = frame.drawing;
+      img.src = frame.composite;
     }
   }, [selectedBase]);
 
-  // ── Save drawing to frame ─────────────────────────────────────
-  function saveDrawing() {
+  // ── Save canvas state to frame ────────────────────────────────
+  function saveCanvas() {
     if (!selectedBase || !drawCanvasRef.current) return;
     const dataUrl = drawCanvasRef.current.toDataURL('image/png');
-    setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, drawing:dataUrl} : f));
+    setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, composite:dataUrl} : f));
   }
 
-  // ── Assign image ──────────────────────────────────────────────
+  // ── Assign image — draws it onto canvas ───────────────────────
   function assignImageToFrame(file) {
     if (!file || !file.type.startsWith('image/') || !selectedBase) return;
     const url = URL.createObjectURL(file);
-    setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, imageUrl:url, x:0, y:0, scale:1} : f));
+    const canvas = drawCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, DRAW_W, DRAW_H);
+      // scale to fit canvas maintaining aspect ratio
+      const scale = Math.min(DRAW_W / img.width, DRAW_H / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      const x = (DRAW_W - w) / 2;
+      const y = (DRAW_H - h) / 2;
+      ctx.drawImage(img, x, y, w, h);
+      saveCanvas();
+      // also store original url for thumbnail
+      setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, imageUrl:url} : f));
+    };
+    img.src = url;
   }
   function handleFileChange(e) { assignImageToFrame(e.target.files?.[0]); e.target.value=''; }
 
@@ -178,7 +196,7 @@ export default function Project() {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
     lastPosRef.current   = null;
-    saveDrawing();
+    saveCanvas();
   }
 
   // ── Wheel: zoom ───────────────────────────────────────────────
@@ -226,9 +244,9 @@ export default function Project() {
 
   const totalVisible = Math.max(baseFrames.length+4, 30);
   const curFrame = baseFrames.find(f=>f.id===selectedBase);
-  const canvasImg = curFrame?.imageUrl||null;
+  const hasContent = !!curFrame?.composite;
 
-  const cursorMap = { move: canvasImg?(imgDragRef.current?'grabbing':'grab'):(selectedBase?'pointer':'default'), pencil:'crosshair', eraser:'cell' };
+  const cursorMap = { move: selectedBase?(imgDragRef.current?'grabbing':'grab'):'default', pencil:'crosshair', eraser:'cell' };
 
   return (
     <div style={{height:'100vh',display:'flex',flexDirection:'column',fontFamily:'Inter,system-ui,sans-serif',overflow:'hidden',background:'#0f172a'}}>
@@ -323,7 +341,7 @@ export default function Project() {
             onDragLeave={()=>setCanvasOver(false)}
             onDrop={e=>{e.preventDefault();setCanvasOver(false);assignImageToFrame(e.dataTransfer.files?.[0]);}}
             style={{
-              background:'#ffffff',
+              background: hasContent ? 'transparent' : '#ffffff',
               outline: canvasOver ? '3px solid #38bdf8' : 'none',
               aspectRatio:'16/9',
               maxHeight:'calc(100% - 20px)',
@@ -338,35 +356,14 @@ export default function Project() {
               willChange:'transform',
             }}
           >
-            {/* Grid (empty state) */}
-            {!canvasImg && (
+            {/* Grid (shown under canvas when empty) */}
+            {!curFrame?.composite && (
               <div style={{position:'absolute',inset:0,pointerEvents:'none',
                 backgroundImage:'linear-gradient(#f1f5f9 1px,transparent 1px),linear-gradient(90deg,#f1f5f9 1px,transparent 1px)',
                 backgroundSize:'64px 64px'}}/>
             )}
 
-            {/* Image layer */}
-            {canvasImg && (
-              <img
-                src={canvasImg}
-                alt="frame"
-                draggable={false}
-                style={{
-                  position:'absolute',
-                  maxWidth:'none', maxHeight:'none',
-                  width:'100%', height:'100%',
-                  objectFit:'contain',
-                  transform:`translate(${curFrame?.x||0}px,${curFrame?.y||0}px) scale(${curFrame?.scale||1})`,
-                  transformOrigin:'center center',
-                  pointerEvents:'none',
-                  /* fix black-flash */
-                  backfaceVisibility:'hidden',
-                  WebkitBackfaceVisibility:'hidden',
-                }}
-              />
-            )}
-
-            {/* Drawing canvas layer */}
+            {/* Single canvas — image + drawings in one layer */}
             <canvas
               ref={drawCanvasRef}
               width={DRAW_W}
@@ -375,12 +372,11 @@ export default function Project() {
                 position:'absolute', inset:0,
                 width:'100%', height:'100%',
                 pointerEvents:'none',
-                zIndex:10,
               }}
             />
 
             {/* Empty state text */}
-            {!canvasImg && (
+            {!hasContent && (
               <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
                 <div style={{textAlign:'center'}}>
                   <p style={{color:'#94a3b8',fontSize:'11px',fontFamily:'monospace',marginBottom:'6px'}}>1920 × 1080</p>

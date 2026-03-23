@@ -37,9 +37,10 @@ export const slotsApi = {
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
 export const uploadApi = {
-  frames: (file, onProgress) => {
+  frames: (files, onProgress) => {
     const fd = new FormData();
-    fd.append('frames', file);
+    // files can be a FileList or array of File
+    Array.from(files).forEach(f => fd.append('frames', f));
     return api.post('/api/upload/frames', fd, {
       onUploadProgress: (e) =>
         onProgress && onProgress(Math.round((e.loaded / e.total) * 100)),

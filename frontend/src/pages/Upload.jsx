@@ -34,14 +34,13 @@ export default function Upload() {
     });
   }, [projectId]);
 
-  async function handleFile(file) {
-    if (!file?.name.endsWith('.zip')) {
-      alert('Please upload a ZIP file.'); return;
-    }
+  async function handleFiles(files) {
+    const images = Array.from(files).filter(f => /\.(png|jpg|jpeg)$/i.test(f.name));
+    if (images.length === 0) { alert('No PNG/JPG images found in the folder.'); return; }
     setUploading(true);
     setUploadProgress(0);
     try {
-      const { data } = await uploadApi.frames(file, setUploadProgress);
+      const { data } = await uploadApi.frames(images, setUploadProgress);
       setUploadResult(data);
       setStep('configure');
     } catch (e) {
@@ -51,7 +50,7 @@ export default function Upload() {
 
   function handleDrop(e) {
     e.preventDefault(); setDragOver(false);
-    handleFile(e.dataTransfer.files[0]);
+    handleFiles(e.dataTransfer.files);
   }
 
   function toggle(idx) {
@@ -140,14 +139,15 @@ export default function Upload() {
               ) : (
                 <div>
                   <div className="text-5xl mb-4 opacity-60">📂</div>
-                  <p className="text-white font-medium">Drop ZIP file here</p>
-                  <p className="text-muted text-sm mt-1">or click to browse</p>
-                  <p className="text-muted/50 text-xs mt-3">Accepts .zip with .png / .jpg frames</p>
+                  <p className="text-white font-medium">Drop your frames folder here</p>
+                  <p className="text-muted text-sm mt-1">or click to select folder</p>
+                  <p className="text-muted/50 text-xs mt-3">PNG / JPG frames — max 120</p>
                 </div>
               )}
             </div>
-            <input ref={fileRef} type="file" accept=".zip" className="hidden"
-              onChange={(e) => handleFile(e.target.files[0])} />
+            <input ref={fileRef} type="file" className="hidden" multiple
+              {...{ webkitdirectory: '', directory: '' }}
+              onChange={(e) => handleFiles(e.target.files)} />
           </div>
         )}
 
