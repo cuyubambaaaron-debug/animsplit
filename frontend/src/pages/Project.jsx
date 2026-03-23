@@ -31,12 +31,20 @@ export default function Project() {
   const [pencilSize,  setPencilSize]  = useState(4);
 
   const fileRef       = useRef();
-  const containerRef  = useRef();   // the white canvas container div
-  const imgCanvasRef  = useRef();   // canvas holding image pixels (erasable)
-  const drawCanvasRef = useRef();   // canvas for pencil strokes (on top)
+  const mainCanvasRef = useRef();   // single visible canvas
+  const imgOffRef     = useRef(null); // offscreen canvas: image pixels
+  const drawOffRef    = useRef(null); // offscreen canvas: pencil strokes
   const imgDragRef    = useRef(null);
   const isDrawingRef  = useRef(false);
   const lastPosRef    = useRef(null);
+  const frameRef      = useRef(null); // always current frame for use inside handlers
+
+  // Init offscreen canvases once
+  useEffect(() => {
+    const make = () => { const c = document.createElement('canvas'); c.width=DRAW_W; c.height=DRAW_H; return c; };
+    imgOffRef.current  = make();
+    drawOffRef.current = make();
+  }, []);
 
   // ── Load project ─────────────────────────────────────────────
   useEffect(() => { load(); }, [id]);
@@ -92,66 +100,106 @@ export default function Project() {
     if (selectedBase===fid) setSelectedBase(null);
   }
 
-  // ── Restore canvases when switching frames ────────────────────
+  // ── Redraw the single visible canvas ─────────────────────────
+  function redraw(frame) {
+    const main = mainCanvasRef.current;
+    const imgOff  = imgOffRef.current;
+    const drawOff = drawOffRef.current;
+    if (!main || !imgOff || !drawOff) return;
+    const ctx = main.getContext('2d');
+    const W = main.width, H = main.height;
+    const tx    = frame?.x     || 0;
+    const ty    = frame?.y     || 0;
+    const scale = frame?.scale || 1;
+    // Pixel ratio: canvas px per CSS px (main canvas is CSS 100%x100% of container)
+    const rect = main.getBoundingClientRect();
+    const rx = W / (rect.width  || W);
+    const ry = H / (rect.height || H);
+
+    // 1. White background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+
+    // 2. Grid
+    ctx.strokeStyle = '#f1f5f9';
+    ctx.lineWidth = 1;
+    for (let x=0; x<W; x+=80*rx) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y=0; y<H; y+=80*ry) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+    // 3. Image layer (with position/scale, NO CSS transform)
+    ctx.save();
+    ctx.translate(W/2 + tx*rx, H/2 + ty*ry);
+    ctx.scale(scale, scale);
+    ctx.drawImage(imgOff, -W/2, -H/2, W, H);
+    ctx.restore();
+
+    // 4. Drawing strokes on top
+    ctx.drawImage(drawOff, 0, 0, W, H);
+  }
+
+  // Keep frameRef in sync + redraw when frame data changes
+  useEffect(() => {
+    const frame = baseFrames.find(f=>f.id===selectedBase) || null;
+    frameRef.current = frame;
+    redraw(frame);
+  });
+
+  // ── Restore offscreen canvases when switching frames ──────────
   useEffect(() => {
     const frame = baseFrames.find(f=>f.id===selectedBase);
+    const imgOff  = imgOffRef.current;
+    const drawOff = drawOffRef.current;
+    if (!imgOff || !drawOff) return;
 
-    // Restore drawing layer
-    const dc = drawCanvasRef.current;
-    if (dc) {
-      const ctx = dc.getContext('2d');
-      ctx.clearRect(0, 0, DRAW_W, DRAW_H);
-      if (frame?.drawing) {
-        const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0, DRAW_W, DRAW_H);
-        img.src = frame.drawing;
-      }
-    }
+    // Clear both
+    imgOff.getContext('2d').clearRect(0,0,DRAW_W,DRAW_H);
+    drawOff.getContext('2d').clearRect(0,0,DRAW_W,DRAW_H);
 
-    // Restore image layer
-    const ic = imgCanvasRef.current;
-    if (ic) {
-      const ctx = ic.getContext('2d');
-      ctx.clearRect(0, 0, DRAW_W, DRAW_H);
-      if (frame?.imgData) {
-        const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0, DRAW_W, DRAW_H);
-        img.src = frame.imgData;
-      } else if (frame?.imageUrl) {
-        // First time: draw image with objectFit:contain onto imgCanvas
-        const img = new Image();
-        img.onload = () => {
-          const aspect = img.naturalWidth / img.naturalHeight;
-          const ca = DRAW_W / DRAW_H;
-          let dw, dh, dx, dy;
-          if (aspect > ca) { dw=DRAW_W; dh=DRAW_W/aspect; } else { dh=DRAW_H; dw=DRAW_H*aspect; }
-          dx=(DRAW_W-dw)/2; dy=(DRAW_H-dh)/2;
-          ctx.clearRect(0,0,DRAW_W,DRAW_H);
-          ctx.drawImage(img, dx, dy, dw, dh);
-        };
-        img.src = frame.imageUrl;
-      }
+    const loadImg = (src, canvas, onDone) => {
+      const i = new Image(); i.onload = () => { canvas.getContext('2d').drawImage(i,0,0,DRAW_W,DRAW_H); onDone?.(); }; i.src = src;
+    };
+
+    let pending = 0;
+    const done = () => { pending--; if (!pending) redraw(frame); };
+
+    if (frame?.imgData)   { pending++; loadImg(frame.imgData,  imgOff,  done); }
+    else if (frame?.imageUrl) {
+      pending++;
+      const i = new Image();
+      i.onload = () => {
+        const aspect = i.naturalWidth / i.naturalHeight;
+        const ca = DRAW_W / DRAW_H;
+        let dw, dh, dx, dy;
+        if (aspect > ca) { dw=DRAW_W; dh=DRAW_W/aspect; } else { dh=DRAW_H; dw=DRAW_H*aspect; }
+        dx=(DRAW_W-dw)/2; dy=(DRAW_H-dh)/2;
+        imgOff.getContext('2d').drawImage(i, dx, dy, dw, dh);
+        done();
+      };
+      i.src = frame.imageUrl;
     }
+    if (frame?.drawing) { pending++; loadImg(frame.drawing, drawOff, done); }
+    if (!pending) redraw(frame);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBase]);
 
-  function saveDrawing() {
-    if (!selectedBase || !drawCanvasRef.current) return;
+  function saveImgOff() {
+    if (!selectedBase || !imgOffRef.current) return;
     setBaseFrames(prev => prev.map(f=>f.id===selectedBase
-      ? {...f, drawing: drawCanvasRef.current.toDataURL('image/png')} : f));
+      ? {...f, imgData: imgOffRef.current.toDataURL('image/png'), imageUrl: null} : f));
   }
-  function saveImgCanvas() {
-    if (!selectedBase || !imgCanvasRef.current) return;
+  function saveDrawOff() {
+    if (!selectedBase || !drawOffRef.current) return;
     setBaseFrames(prev => prev.map(f=>f.id===selectedBase
-      ? {...f, imgData: imgCanvasRef.current.toDataURL('image/png')} : f));
+      ? {...f, drawing: drawOffRef.current.toDataURL('image/png')} : f));
   }
 
-  // ── Assign image → draw onto imgCanvas ───────────────────────
+  // ── Assign image → imgOffscreen ───────────────────────────────
   function assignImageToFrame(file) {
     if (!file || !file.type.startsWith('image/') || !selectedBase) return;
     const url = URL.createObjectURL(file);
-    const ic  = imgCanvasRef.current;
-    if (!ic) return;
-    const ctx = ic.getContext('2d');
+    const imgOff = imgOffRef.current;
+    if (!imgOff) return;
+    const ctx = imgOff.getContext('2d');
     const img = new Image();
     img.onload = () => {
       const aspect = img.naturalWidth / img.naturalHeight;
@@ -168,31 +216,38 @@ export default function Project() {
   }
   function handleFileChange(e) { assignImageToFrame(e.target.files?.[0]); e.target.value=''; }
 
-  // Convert mouse CSS position → imgCanvas pixel (accounting for transform)
-  function mouseToImgCanvas(e) {
-    const container = containerRef.current;
-    if (!container) return null;
-    const rect   = container.getBoundingClientRect();
-    const mx     = e.clientX - rect.left;
-    const my     = e.clientY - rect.top;
-    const cw     = rect.width;
-    const ch     = rect.height;
-    const frame  = baseFrames.find(f=>f.id===selectedBase);
-    const tx     = frame?.x     || 0;
-    const ty     = frame?.y     || 0;
-    const scale  = frame?.scale || 1;
-    // Inverse of: translate(tx,ty) scale(scale) with transformOrigin center
-    const cx_css = (mx - cw/2 - tx) / scale + cw/2;
-    const cy_css = (my - ch/2 - ty) / scale + ch/2;
-    return { x: (cx_css/cw)*DRAW_W, y: (cy_css/ch)*DRAW_H };
+  // Convert mouse position → canvas pixels
+  function mouseToCanvas(e) {
+    const c = mainCanvasRef.current;
+    if (!c) return {x:0,y:0};
+    const r = c.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(DRAW_W/r.width), y:(e.clientY-r.top)*(DRAW_H/r.height) };
+  }
+
+  // Convert mouse → imgOffscreen local coords (accounting for frame transform)
+  function mouseToImgLocal(e) {
+    const {x:cx, y:cy} = mouseToCanvas(e);
+    const f = frameRef.current;
+    const c = mainCanvasRef.current;
+    if (!c) return {x:0,y:0};
+    const r = c.getBoundingClientRect();
+    const rx = DRAW_W / r.width;
+    const ry = DRAW_H / r.height;
+    const tx    = (f?.x     || 0) * rx;
+    const ty    = (f?.y     || 0) * ry;
+    const scale = f?.scale || 1;
+    return {
+      x: (cx - DRAW_W/2 - tx) / scale + DRAW_W/2,
+      y: (cy - DRAW_H/2 - ty) / scale + DRAW_H/2,
+    };
   }
 
   // ── Mouse: MOVE tool ──────────────────────────────────────────
   function onMoveDown(e) {
     if (tool!=='move' || !selectedBase) return;
-    const frame = baseFrames.find(f=>f.id===selectedBase);
-    if (!frame?.imageUrl && !frame?.imgData) return;
-    imgDragRef.current = { startX:e.clientX, startY:e.clientY, origX:frame.x||0, origY:frame.y||0 };
+    const f = frameRef.current;
+    if (!f?.imageUrl && !f?.imgData) return;
+    imgDragRef.current = { startX:e.clientX, startY:e.clientY, origX:f.x||0, origY:f.y||0 };
     e.preventDefault();
   }
   function onMoveMove(e) {
@@ -205,65 +260,53 @@ export default function Project() {
   }
   function onMoveUp() { imgDragRef.current = null; }
 
-  // ── Mouse: PENCIL / ERASER tool ──────────────────────────────
-  function getDrawPos(e) {
-    const canvas = drawCanvasRef.current;
-    const rect   = canvas.getBoundingClientRect();
-    return {
-      x: ((e.clientX - rect.left)  / rect.width)  * DRAW_W,
-      y: ((e.clientY - rect.top)   / rect.height) * DRAW_H,
-    };
+  // ── Mouse: PENCIL / ERASER ────────────────────────────────────
+  function getBrushPx() {
+    const c = mainCanvasRef.current;
+    if (!c) return pencilSize * 3;
+    return pencilSize * (DRAW_W / c.getBoundingClientRect().width);
   }
 
   function onDrawDown(e) {
     if ((tool!=='pencil' && tool!=='eraser') || !selectedBase) return;
     isDrawingRef.current = true;
-    lastPosRef.current = tool==='eraser' ? mouseToImgCanvas(e) : getDrawPos(e);
+    lastPosRef.current = tool==='eraser' ? mouseToImgLocal(e) : mouseToCanvas(e);
     e.preventDefault();
   }
   function onDrawMove(e) {
     if (!isDrawingRef.current) return;
-    const rect = drawCanvasRef.current.getBoundingClientRect();
-    const brushPx = pencilSize * (DRAW_W / rect.width);
-
+    const brushPx = getBrushPx();
     if (tool === 'eraser') {
-      // Erase from IMAGE canvas using coordinate-corrected position
-      const ic  = imgCanvasRef.current;
-      const ctx = ic.getContext('2d');
-      const pos = mouseToImgCanvas(e);
-      if (!pos || !lastPosRef.current) { lastPosRef.current = pos; return; }
+      const pos = mouseToImgLocal(e);
+      const ctx = imgOffRef.current.getContext('2d');
       ctx.globalCompositeOperation = 'destination-out';
-      ctx.lineWidth = brushPx;
-      ctx.lineCap   = 'round';
-      ctx.lineJoin  = 'round';
+      ctx.lineWidth = brushPx; ctx.lineCap='round'; ctx.lineJoin='round';
       ctx.beginPath();
       ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       lastPosRef.current = pos;
+      redraw(frameRef.current);
     } else {
-      // Pencil draws on DRAWING canvas
-      const dc  = drawCanvasRef.current;
-      const ctx = dc.getContext('2d');
-      const pos = getDrawPos(e);
+      const pos = mouseToCanvas(e);
+      const ctx = drawOffRef.current.getContext('2d');
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = pencilColor;
-      ctx.lineWidth   = brushPx;
-      ctx.lineCap     = 'round';
-      ctx.lineJoin    = 'round';
+      ctx.lineWidth = brushPx; ctx.lineCap='round'; ctx.lineJoin='round';
       ctx.beginPath();
       ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       lastPosRef.current = pos;
+      redraw(frameRef.current);
     }
   }
   function onDrawUp() {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
     lastPosRef.current   = null;
-    if (tool === 'eraser') saveImgCanvas();
-    else saveDrawing();
+    if (tool === 'eraser') saveImgOff();
+    else saveDrawOff();
   }
 
   // ── Wheel: zoom ───────────────────────────────────────────────
@@ -311,7 +354,8 @@ export default function Project() {
 
   const totalVisible = Math.max(baseFrames.length+4, 30);
   const curFrame  = baseFrames.find(f=>f.id===selectedBase);
-  const cursorMap = { move: curFrame?.imageUrl?(imgDragRef.current?'grabbing':'grab'):(selectedBase?'pointer':'default'), pencil:'crosshair', eraser:'cell' };
+  const hasImg    = !!(curFrame?.imageUrl || curFrame?.imgData);
+  const cursorMap = { move: hasImg?'grab':'default', pencil:'crosshair', eraser:'cell' };
 
   return (
     <div style={{height:'100vh',display:'flex',flexDirection:'column',fontFamily:'Inter,system-ui,sans-serif',overflow:'hidden',background:'#0f172a'}}>
@@ -416,7 +460,6 @@ export default function Project() {
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseUp}
             onWheel={onWheel}
-            ref={containerRef}
             onDragOver={e=>{e.preventDefault();setCanvasOver(true);}}
             onDragLeave={()=>setCanvasOver(false)}
             onDrop={e=>{e.preventDefault();setCanvasOver(false);assignImageToFrame(e.dataTransfer.files?.[0]);}}
@@ -433,40 +476,16 @@ export default function Project() {
               userSelect:'none',
             }}
           >
-            {/* Grid lines (always visible) */}
-            <div style={{position:'absolute',inset:0,pointerEvents:'none',
-              backgroundImage:'linear-gradient(#f1f5f9 1px,transparent 1px),linear-gradient(90deg,#f1f5f9 1px,transparent 1px)',
-              backgroundSize:'64px 64px'}}/>
-
-            {/* Image canvas — movable, erasable */}
+            {/* Single canvas — no CSS transform, everything drawn via API */}
             <canvas
-              ref={imgCanvasRef}
+              ref={mainCanvasRef}
               width={DRAW_W}
               height={DRAW_H}
-              style={{
-                position:'absolute', width:'100%', height:'100%',
-                transform:`translate(${curFrame?.x||0}px,${curFrame?.y||0}px) scale(${curFrame?.scale||1})`,
-                transformOrigin:'center center',
-                pointerEvents:'none',
-                willChange:'transform',
-                imageRendering:'auto',
-              }}
-            />
-
-            {/* Drawing layer — transparent canvas on top */}
-            <canvas
-              ref={drawCanvasRef}
-              width={DRAW_W}
-              height={DRAW_H}
-              style={{
-                position:'absolute', inset:0,
-                width:'100%', height:'100%',
-                pointerEvents:'none',
-              }}
+              style={{position:'absolute',inset:0,width:'100%',height:'100%',display:'block'}}
             />
 
             {/* Empty state text */}
-            {!curFrame?.imageUrl && (
+            {!curFrame?.imageUrl && !curFrame?.imgData && (
               <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
                 <div style={{textAlign:'center'}}>
                   <p style={{color:'#94a3b8',fontSize:'11px',fontFamily:'monospace',marginBottom:'6px'}}>1920 × 1080</p>
