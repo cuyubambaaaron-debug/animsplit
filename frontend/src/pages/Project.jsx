@@ -90,50 +90,32 @@ export default function Project() {
     if (selectedBase===fid) setSelectedBase(null);
   }
 
-  // ── Restore canvas when switching frames ─────────────────────
+  // ── Restore drawing layer when switching frames ───────────────
   useEffect(() => {
     const canvas = drawCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, DRAW_W, DRAW_H);
     const frame = baseFrames.find(f=>f.id===selectedBase);
-    // draw saved composite (image + drawings) onto canvas
-    if (frame?.composite) {
+    if (frame?.drawing) {
       const img = new Image();
       img.onload = () => ctx.drawImage(img, 0, 0, DRAW_W, DRAW_H);
-      img.src = frame.composite;
+      img.src = frame.drawing;
     }
   }, [selectedBase]);
 
-  // ── Save canvas state to frame ────────────────────────────────
-  function saveCanvas() {
+  // ── Save drawing layer to frame ───────────────────────────────
+  function saveDrawing() {
     if (!selectedBase || !drawCanvasRef.current) return;
     const dataUrl = drawCanvasRef.current.toDataURL('image/png');
-    setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, composite:dataUrl} : f));
+    setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, drawing:dataUrl} : f));
   }
 
-  // ── Assign image — draws it onto canvas ───────────────────────
+  // ── Assign image — stores url + resets position ───────────────
   function assignImageToFrame(file) {
     if (!file || !file.type.startsWith('image/') || !selectedBase) return;
     const url = URL.createObjectURL(file);
-    const canvas = drawCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, DRAW_W, DRAW_H);
-      // scale to fit canvas maintaining aspect ratio
-      const scale = Math.min(DRAW_W / img.width, DRAW_H / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
-      const x = (DRAW_W - w) / 2;
-      const y = (DRAW_H - h) / 2;
-      ctx.drawImage(img, x, y, w, h);
-      saveCanvas();
-      // also store original url for thumbnail
-      setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, imageUrl:url} : f));
-    };
-    img.src = url;
+    setBaseFrames(prev => prev.map(f=>f.id===selectedBase ? {...f, imageUrl:url, x:0, y:0, scale:1} : f));
   }
   function handleFileChange(e) { assignImageToFrame(e.target.files?.[0]); e.target.value=''; }
 
@@ -196,7 +178,7 @@ export default function Project() {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
     lastPosRef.current   = null;
-    saveCanvas();
+    saveDrawing();
   }
 
   // ── Wheel: zoom ───────────────────────────────────────────────
@@ -243,10 +225,8 @@ export default function Project() {
     : [{id:'bg-ph',type:'background',isEmpty:true,label:'+ Add Background',color:'#34d399'}];
 
   const totalVisible = Math.max(baseFrames.length+4, 30);
-  const curFrame = baseFrames.find(f=>f.id===selectedBase);
-  const hasContent = !!curFrame?.composite;
-
-  const cursorMap = { move: selectedBase?(imgDragRef.current?'grabbing':'grab'):'default', pencil:'crosshair', eraser:'cell' };
+  const curFrame  = baseFrames.find(f=>f.id===selectedBase);
+  const cursorMap = { move: curFrame?.imageUrl?(imgDragRef.current?'grabbing':'grab'):(selectedBase?'pointer':'default'), pencil:'crosshair', eraser:'cell' };
 
   return (
     <div style={{height:'100vh',display:'flex',flexDirection:'column',fontFamily:'Inter,system-ui,sans-serif',overflow:'hidden',background:'#0f172a'}}>
@@ -341,7 +321,7 @@ export default function Project() {
             onDragLeave={()=>setCanvasOver(false)}
             onDrop={e=>{e.preventDefault();setCanvasOver(false);assignImageToFrame(e.dataTransfer.files?.[0]);}}
             style={{
-              background: hasContent ? 'transparent' : '#ffffff',
+              background: '#ffffff',
               outline: canvasOver ? '3px solid #38bdf8' : 'none',
               aspectRatio:'16/9',
               maxHeight:'calc(100% - 20px)',
@@ -351,19 +331,31 @@ export default function Project() {
               overflow:'hidden',
               cursor: cursorMap[tool],
               userSelect:'none',
-              /* fix black-flash bug */
-              isolation:'isolate',
-              willChange:'transform',
             }}
           >
-            {/* Grid (shown under canvas when empty) */}
-            {!curFrame?.composite && (
-              <div style={{position:'absolute',inset:0,pointerEvents:'none',
-                backgroundImage:'linear-gradient(#f1f5f9 1px,transparent 1px),linear-gradient(90deg,#f1f5f9 1px,transparent 1px)',
-                backgroundSize:'64px 64px'}}/>
+            {/* Grid lines (always visible) */}
+            <div style={{position:'absolute',inset:0,pointerEvents:'none',
+              backgroundImage:'linear-gradient(#f1f5f9 1px,transparent 1px),linear-gradient(90deg,#f1f5f9 1px,transparent 1px)',
+              backgroundSize:'64px 64px'}}/>
+
+            {/* Image layer — movable with transform */}
+            {curFrame?.imageUrl && (
+              <img
+                src={curFrame.imageUrl}
+                alt="frame"
+                draggable={false}
+                style={{
+                  position:'absolute',
+                  width:'100%', height:'100%',
+                  objectFit:'contain',
+                  transform:`translate(${curFrame.x||0}px,${curFrame.y||0}px) scale(${curFrame.scale||1})`,
+                  transformOrigin:'center center',
+                  pointerEvents:'none',
+                }}
+              />
             )}
 
-            {/* Single canvas — image + drawings in one layer */}
+            {/* Drawing layer — transparent canvas on top */}
             <canvas
               ref={drawCanvasRef}
               width={DRAW_W}
@@ -376,7 +368,7 @@ export default function Project() {
             />
 
             {/* Empty state text */}
-            {!hasContent && (
+            {!curFrame?.imageUrl && (
               <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
                 <div style={{textAlign:'center'}}>
                   <p style={{color:'#94a3b8',fontSize:'11px',fontFamily:'monospace',marginBottom:'6px'}}>1920 × 1080</p>
